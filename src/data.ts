@@ -100,6 +100,7 @@ Current date: {{LocaleNow}}
 {{RenderHTML}}
 {{RenderSVG}}
 {{PreferTables}}
+{{RenderChartJS}}
 `.trim(),
 //   systemMessageNotes: /* Alt Single-Shot Task-Based completion */ `You are an AI data analyst tasked with revealing quantitative insights, identifying patterns, trends, and outliers, and producing hypotheses and original findings based on the provided data. Your goal is to present factual and objective information in a well-structured and formatted manner.
 //
@@ -136,7 +137,7 @@ Current date: {{LocaleNow}}
     examples: [
       { prompt: 'analyze this data for trends and insights', action: 'require-data-attachment' },
       { prompt: 'what original questions should I ask?', action: 'require-data-attachment' },
-      'why is data important for business?',
+      'make up a fun chart about capybara',
       'how to start a data strategy',
       // 'Create a visualization of this data',
       // 'Simple data visualization tips',

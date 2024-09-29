@@ -41,17 +41,18 @@ import { KeyStroke } from '~/common/components/KeyStroke';
 import { MarkHighlightIcon } from '~/common/components/icons/MarkHighlightIcon';
 import { TooltipOutlined } from '~/common/components/TooltipOutlined';
 import { adjustContentScaling, themeScalingMap, themeZIndexChatBubble } from '~/common/app.theme';
+import { avatarIconSx, makeMessageAvatarIcon, messageBackground, useMessageAvatarLabel } from '~/common/util/dMessageUtils';
 import { copyToClipboard } from '~/common/util/clipboardUtils';
 import { createTextContentFragment, DMessageFragment, DMessageFragmentId } from '~/common/stores/chat/chat.fragments';
 import { useUIPreferencesStore } from '~/common/state/store-ui';
 import { useUXLabsStore } from '~/common/state/store-ux-labs';
 
+import { BlockOpContinue } from './BlockOpContinue';
 import { ContentFragments } from './fragments-content/ContentFragments';
-import { ContinueFragment } from './ContinueFragment';
 import { DocumentAttachmentFragments } from './fragments-attachment-doc/DocumentAttachmentFragments';
 import { ImageAttachmentFragments } from './fragments-attachment-image/ImageAttachmentFragments';
 import { InReferenceToList } from './in-reference-to/InReferenceToList';
-import { avatarIconSx, makeMessageAvatarIcon, messageAsideColumnSx, messageAvatarLabelAnimatedSx, messageAvatarLabelSx, messageBackground, messageZenAsideColumnSx, useMessageAvatarLabel } from './messageUtils';
+import { messageAsideColumnSx, messageAvatarLabelAnimatedSx, messageAvatarLabelSx, messageZenAsideColumnSx } from './ChatMessage.styles';
 import { useChatShowTextDiff } from '../../store-app-chat';
 import { useFragmentBuckets } from './useFragmentBuckets';
 import { useSelHighlighterMemo } from './useSelHighlighterMemo';
@@ -193,10 +194,6 @@ export function ChatMessage(props: {
     created: messageCreated,
     updated: messageUpdated,
   } = props.message;
-  const zenMode = uiComplexityMode === 'minimal';
-
-  const messageGeneratorName = messageGenerator?.name;
-  const { label: messageAvatarLabel, tooltip: messageAvatarTooltip } = useMessageAvatarLabel(props.message, uiComplexityMode);
 
   const fromAssistant = messageRole === 'assistant';
   const fromSystem = messageRole === 'system';
@@ -229,7 +226,7 @@ export function ChatMessage(props: {
   // const textDiffs = useSanityTextDiffs(messageText, props.diffPreviousText, showDiff);
 
 
-  const { onMessageAssistantFrom, onMessageFragmentAppend, onMessageFragmentDelete, onMessageFragmentReplace } = props;
+  const { onMessageAssistantFrom, onMessageDelete, onMessageFragmentAppend, onMessageFragmentDelete, onMessageFragmentReplace } = props;
 
   const handleFragmentNew = React.useCallback(() => {
     onMessageFragmentAppend?.(messageId, createTextContentFragment(''));
@@ -248,19 +245,22 @@ export function ChatMessage(props: {
 
   const isEditingText = !!textContentEditState;
 
+  const handleApplyEdit = React.useCallback((fragmentId: DMessageFragmentId, editedText: string) => {
+    if (editedText.length > 0)
+      handleFragmentReplace(fragmentId, createTextContentFragment(editedText));
+    else
+      handleFragmentDelete(fragmentId);
+  }, [handleFragmentDelete, handleFragmentReplace]);
+
   const handleApplyAllEdits = React.useCallback(async (withControl: boolean) => {
     const state = textContentEditState || {};
     setTextContentEditState(null);
-    for (const [fragmentId, editedText] of Object.entries(state)) {
-      if (editedText.length > 0)
-        handleFragmentReplace(fragmentId, createTextContentFragment(editedText));
-      else
-        handleFragmentDelete(fragmentId);
-    }
+    for (const [fragmentId, editedText] of Object.entries(state))
+      handleApplyEdit(fragmentId, editedText);
     // if the user pressed Ctrl, we begin a regeneration from here
     if (withControl && onMessageAssistantFrom)
       await onMessageAssistantFrom(messageId, 0);
-  }, [handleFragmentDelete, handleFragmentReplace, messageId, onMessageAssistantFrom, textContentEditState]);
+  }, [handleApplyEdit, messageId, onMessageAssistantFrom, textContentEditState]);
 
   const handleEditsApplyClicked = React.useCallback(() => handleApplyAllEdits(false), [handleApplyAllEdits]);
 
@@ -268,8 +268,12 @@ export function ChatMessage(props: {
 
   const handleEditsCancel = React.useCallback(() => setTextContentEditState(null), []);
 
-  const handleEditSetText = React.useCallback((fragmentId: DMessageFragmentId, editedText: string) =>
-    setTextContentEditState((prev): ChatMessageTextPartEditState => ({ ...prev, [fragmentId]: editedText || '' })), []);
+  const handleEditSetText = React.useCallback((fragmentId: DMessageFragmentId, editedText: string, applyNow: boolean) => {
+    if (applyNow)
+      handleApplyEdit(fragmentId, editedText);
+    else
+      setTextContentEditState((prev): ChatMessageTextPartEditState => ({ ...prev, [fragmentId]: editedText || '' }));
+  }, [handleApplyEdit]);
 
 
   // Message Operations Menu
@@ -381,9 +385,9 @@ export function ChatMessage(props: {
     handleCloseOpsMenu();
   };
 
-  const handleOpsDelete = (_e: React.MouseEvent) => {
-    props.onMessageDelete?.(messageId);
-  };
+  const handleOpsDelete = React.useCallback(() => {
+    onMessageDelete?.(messageId);
+  }, [messageId, onMessageDelete]);
 
 
   // Context Menu
@@ -563,12 +567,18 @@ export function ChatMessage(props: {
   }), [adjContentScaling, backgroundColor, isUserMessageSkipped, isUserStarred, isVndAndCacheAuto, isVndAndCacheUser, props.sx, uiComplexityMode]);
 
 
-  // avatar
+  // avatar icon & label & tooltip
+
+  const zenMode = uiComplexityMode === 'minimal';
+
   const showAvatarIcon = !props.hideAvatar && !zenMode;
-  const avatarIconEl: React.JSX.Element | null = React.useMemo(
-    () => showAvatarIcon ? makeMessageAvatarIcon(uiComplexityMode, messageRole, messageGeneratorName, messagePurposeId, !!messagePendingIncomplete, isUserMessageSkipped, true) : null,
-    [isUserMessageSkipped, messageGeneratorName, messagePendingIncomplete, messagePurposeId, messageRole, showAvatarIcon, uiComplexityMode],
+  const messageGeneratorName = messageGenerator?.name;
+  const messageAvatarIcon = React.useMemo(
+    () => !showAvatarIcon ? null : makeMessageAvatarIcon(uiComplexityMode, messageRole, messageGeneratorName, messagePurposeId, !!messagePendingIncomplete, isUserMessageSkipped, isUserNotifyComplete, true),
+    [isUserMessageSkipped, isUserNotifyComplete, messageGeneratorName, messagePendingIncomplete, messagePurposeId, messageRole, showAvatarIcon, uiComplexityMode],
   );
+
+  const { label: messageAvatarLabel, tooltip: messageAvatarTooltip } = useMessageAvatarLabel(props.message, uiComplexityMode);
 
 
   return (
@@ -607,7 +617,7 @@ export function ChatMessage(props: {
               sx={personaAvatarOrMenuSx}
             >
               {showAvatarIcon && !isHovering && !opsMenuAnchor ? (
-                avatarIconEl
+                messageAvatarIcon
               ) : (
                 <IconButton
                   size='sm'
@@ -686,6 +696,7 @@ export function ChatMessage(props: {
             showEmptyNotice={!messageFragments.length && !messagePendingIncomplete}
 
             contentScaling={adjContentScaling}
+            uiComplexityMode={uiComplexityMode}
             fitScreen={props.fitScreen}
             isMobile={props.isMobile}
             messageRole={messageRole}
@@ -695,13 +706,14 @@ export function ChatMessage(props: {
             enhanceCodeBlocks={labsEnhanceCodeBlocks}
 
             textEditsState={textContentEditState}
-            setEditedText={handleEditSetText}
+            setEditedText={!messagePendingIncomplete ? handleEditSetText : undefined}
             onEditsApply={handleApplyAllEdits}
             onEditsCancel={handleEditsCancel}
 
             onFragmentBlank={handleFragmentNew}
             onFragmentDelete={handleFragmentDelete}
             onFragmentReplace={handleFragmentReplace}
+            onMessageDelete={props.onMessageDelete ? handleOpsDelete : undefined}
 
             onContextMenu={(props.onMessageFragmentReplace && ENABLE_CONTEXT_MENU) ? handleBlocksContextMenu : undefined}
             onDoubleClick={(props.onMessageFragmentReplace /*&& doubleClickToEdit disabled, as we may have shift too */) ? handleBlocksDoubleClick : undefined}
@@ -724,7 +736,7 @@ export function ChatMessage(props: {
 
           {/* Continue... */}
           {props.isBottom && messageGenerator?.tokenStopReason === 'out-of-tokens' && !!props.onMessageContinue && (
-            <ContinueFragment
+            <BlockOpContinue
               contentScaling={adjContentScaling}
               messageId={messageId}
               messageRole={messageRole}
@@ -819,26 +831,27 @@ export function ChatMessage(props: {
             </MenuItem>
           )}
 
-          <ListDivider />
-
           {/* Anthropic Breakpoint Toggle */}
-          {!isUserMessageSkipped && !!props.showAntPromptCaching && (
+          {!messagePendingIncomplete && <ListDivider />}
+          {!messagePendingIncomplete && !isUserMessageSkipped && !!props.showAntPromptCaching && (
             <MenuItem onClick={handleOpsToggleAntCacheUser}>
               <ListItemDecorator><AnthropicIcon sx={isVndAndCacheUser ? antCachePromptOnSx : antCachePromptOffSx} /></ListItemDecorator>
               {isVndAndCacheUser ? 'Do not cache' : <>Cache <span style={{ opacity: 0.5 }}>up to here</span></>}
             </MenuItem>
           )}
-          {!isUserMessageSkipped && !!props.showAntPromptCaching && isVndAndCacheAuto && !isVndAndCacheUser && (
+          {!messagePendingIncomplete && !isUserMessageSkipped && !!props.showAntPromptCaching && isVndAndCacheAuto && !isVndAndCacheUser && (
             <MenuItem disabled>
               <ListItemDecorator><TextureIcon sx={{ color: ModelVendorAnthropic.brandColor }} /></ListItemDecorator>
               Auto-Cached <span style={{ opacity: 0.5 }}>for 5 min</span>
             </MenuItem>
           )}
           {/* Aix Skip Message */}
-          <MenuItem onClick={handleOpsToggleSkipMessage}>
-            <ListItemDecorator>{isUserMessageSkipped ? <VisibilityOffIcon sx={{ color: 'danger.plainColor' }} /> : <VisibilityIcon />}</ListItemDecorator>
-            {isUserMessageSkipped ? 'Unskip (Process with AI)' : 'Skip AI processing'}
-          </MenuItem>
+          {!messagePendingIncomplete && (
+            <MenuItem onClick={handleOpsToggleSkipMessage}>
+              <ListItemDecorator>{isUserMessageSkipped ? <VisibilityOffIcon sx={{ color: 'danger.plainColor' }} /> : <VisibilityIcon />}</ListItemDecorator>
+              {isUserMessageSkipped ? 'Unskip' : 'Skip AI processing'}
+            </MenuItem>
+          )}
 
           {/* Delete / Branch / Truncate */}
           {!!props.onMessageBranch && <ListDivider />}
@@ -914,8 +927,8 @@ export function ChatMessage(props: {
               {!fromAssistant
                 ? <>Beam <span style={{ opacity: 0.5 }}>from here</span></>
                 : !props.isBottom
-                  ? <>Beam <span style={{ opacity: 0.5 }}>this message</span></>
-                  : <Box sx={{ flexGrow: 1, display: 'flex', justifyContent: 'space-between', gap: 1 }}>Beam<KeyStroke variant='outlined' combo='Ctrl + Shift + B' /></Box>}
+                  ? <>Beam Edit</>
+                  : <Box sx={{ flexGrow: 1, display: 'flex', justifyContent: 'space-between', gap: 1 }}>Beam Edit<KeyStroke variant='outlined' combo='Ctrl + Shift + B' /></Box>}
             </MenuItem>
           )}
         </CloseableMenu>
