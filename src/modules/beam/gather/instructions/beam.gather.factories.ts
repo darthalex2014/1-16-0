@@ -585,41 +585,6 @@ Censor all words in the text by placing an asterisk (*) after the first letter a
       },
     ],
   },
-  {
-    factoryId: 'rewrite1',
-    shortLabel: 'Rewrite1',
-    addLabel: 'Add Rewrite1',
-    cardTitle: 'Rewritten Responses1',
-    Icon: EditOutlinedIcon,
-    description: 'You can choose one or more responses that the AI should rewrite in a specific style or tone (e.g., more formal, more concise, more emotional).',
-    createInstructions: () => [
-      {
-        type: 'user-input-form',
-        label: 'Rewrite Instructions1',
-        fields: [
-          {
-            name: 'responsesToRewrite1',
-            type: 'checklist',
-            label: 'Select Responses to Rewrite1',
-            options: Array.from({ length: 10 }, (_, i) => ({ label: `Response ${i + 1}`, value: `Response ${i + 1}` })),
-          },
-          {
-            name: 'rewriteStyle1',
-            type: 'text-area',
-            label: 'Describe the desired style and tone',
-            placeholder: 'E.g., More formal, more concise, more humorous, etc.',
-          },
-        ],
-        outputPrompt: `
-The user selected the following responses for rewriting:
-{{responsesToRewrite}}
-
-The user wants the responses to be rewritten in the following style and tone:
-{{rewriteStyle}}
-Answer in Russian.
-
-Censor all words in the text by placing an asterisk (*) after the first letter and before the last. Example: Hello -> H*ell*o.`.trim(),
-      },
       {
         type: 'gather',
         label: 'Rewriting Responses1',
