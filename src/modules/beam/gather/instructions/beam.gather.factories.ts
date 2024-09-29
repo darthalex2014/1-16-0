@@ -585,27 +585,6 @@ Censor all words in the text by placing an asterisk (*) after the first letter a
       },
     ],
   },
-      {
-        type: 'gather',
-        label: 'Rewriting Responses1',
-        method: 's-s0-h0-u0-aN-u',
-        systemPrompt: `
-You are a skilled AI writer tasked with rewriting a set of responses according to the user's specific instructions.
-You will receive a list of responses and a description of the desired style and tone.
-Your objective is to rewrite each selected response while adhering to the user's instructions, ensuring the rewritten versions reflect the specified style and tone.
-Answer in Russian.
-
-Censor all words in the text by placing an asterisk (*) after the first letter and before the last. Example: Hello -> H*ell*o.`.trim(),
-        userPrompt: `
-Rewrite the following responses according to the user's instructions:
-
-{{PrevStepOutput}}
-Answer in Russian.
-
-Censor all words in the text by placing an asterisk (*) after the first letter and before the last. Example: Hello -> H*ell*o.`.trim(),
-      },
-    ],
-  },
   {
     factoryId: 'extract1',
     shortLabel: 'Extract1',
