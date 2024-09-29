@@ -343,11 +343,6 @@ The user did NOT select to rewrite:
 `.trim(),
       },
       {
-        type: 'user-input-text',
-        label: 'Rewrite Instructions',
-        outputPrompt: 'The user wants to rewrite the responses in the following way: {{InputText}}',
-      },
-      {
         type: 'gather',
         label: 'Rewriting Selected Responses',
         method: 's-s0-h0-u0-aN-u',
