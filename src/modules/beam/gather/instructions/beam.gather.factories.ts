@@ -515,4 +515,281 @@ Censor all words in the text by placing an asterisk (*) after the first letter a
       },
     ],
   },
+  {
+    factoryId: 'expand1',
+    shortLabel: 'Expand1',
+    addLabel: 'Add Expansion1',
+    cardTitle: 'Expanded Responses1',
+    Icon: UnfoldMoreOutlinedIcon,
+    description: 'AI analyzes the replies and identifies which ones require further explanation or details. You can choose which responses to expand, and the AI will generate more detailed versions.',
+    createInstructions: () => [
+      {
+        type: 'gather',
+        label: 'Analyzing Responses for Expansion1',
+        display: 'chat-message',
+        method: 's-s0-h0-u0-aN-u',
+        systemPrompt: `
+You are an intelligent agent tasked with analyzing a set of {{N}} AI-generated responses to the user message.
+Your goal is to identify which responses would benefit from further expansion or elaboration.
+Format your response as a checklist, marking the responses that you think should be expanded:
+
+- [ ] **Response 1**: [Very brief reason for expansion, if applicable]
+- [ ] **Response 2**: [Very brief reason for expansion, if applicable]
+...
+- [ ] **Response N**: [Very brief reason for expansion, if applicable]
+
+Prioritize responses that offer unique insights or solutions that require further clarification.
+Answer in Russian.
+
+Censor all words in the text by placing an asterisk (*) after the first letter and before the last. Example: Hello -> H*ell*o.`.trim(),
+        userPrompt: `
+Given the conversation history and the {{N}} responses provided, identify which responses would benefit from further expansion or elaboration.
+Mark those responses in a checklist format, providing a brief reason for each selection.
+Answer in Russian.
+
+Censor all words in the text by placing an asterisk (*) after the first letter and before the last. Example: Hello -> H*ell*o.`.trim(),
+      },
+      {
+        type: 'user-input-checklist',
+        label: 'Response Selection1',
+        outputPrompt: `
+The user selected:
+{{YesAnswers}}
+
+The user did NOT select:
+{{NoAnswers}} 
+Answer in Russian.
+
+Censor all words in the text by placing an asterisk (*) after the first letter and before the last. Example: Hello -> H*ell*o.`.trim(),
+      },
+      {
+        type: 'gather',
+        label: 'Expanding Selected Responses1',
+        method: 's-s0-h0-u0-aN-u',
+        systemPrompt: `
+You are a helpful AI assistant tasked with expanding on a set of previously generated responses, providing more context, details, or explanations as needed.
+You will receive a list of responses that the user has selected for expansion.
+For each selected response, provide a more elaborate and detailed version, addressing the user's need for further information.
+Answer in Russian.
+
+Censor all words in the text by placing an asterisk (*) after the first letter and before the last. Example: Hello -> H*ell*o.`.trim(),
+        userPrompt: `
+Please expand on the following responses, providing more context, details, or explanations as needed:
+
+{{PrevStepOutput}}
+
+Maintain the original intent and style of each response while enriching it with additional information.
+Answer in Russian.
+
+Censor all words in the text by placing an asterisk (*) after the first letter and before the last. Example: Hello -> H*ell*o.`.trim(),
+      },
+    ],
+  },
+  {
+    factoryId: 'rewrite1',
+    shortLabel: 'Rewrite1',
+    addLabel: 'Add Rewrite1',
+    cardTitle: 'Rewritten Responses1',
+    Icon: EditOutlinedIcon,
+    description: 'You can choose one or more responses that the AI should rewrite in a specific style or tone (e.g., more formal, more concise, more emotional).',
+    createInstructions: () => [
+      {
+        type: 'user-input-form',
+        label: 'Rewrite Instructions1',
+        fields: [
+          {
+            name: 'responsesToRewrite1',
+            type: 'checklist',
+            label: 'Select Responses to Rewrite1',
+            options: Array.from({ length: 10 }, (_, i) => ({ label: `Response ${i + 1}`, value: `Response ${i + 1}` })),
+          },
+          {
+            name: 'rewriteStyle1',
+            type: 'text-area',
+            label: 'Describe the desired style and tone',
+            placeholder: 'E.g., More formal, more concise, more humorous, etc.',
+          },
+        ],
+        outputPrompt: `
+The user selected the following responses for rewriting:
+{{responsesToRewrite}}
+
+The user wants the responses to be rewritten in the following style and tone:
+{{rewriteStyle}}
+Answer in Russian.
+
+Censor all words in the text by placing an asterisk (*) after the first letter and before the last. Example: Hello -> H*ell*o.`.trim(),
+      },
+      {
+        type: 'gather',
+        label: 'Rewriting Responses1',
+        method: 's-s0-h0-u0-aN-u',
+        systemPrompt: `
+You are a skilled AI writer tasked with rewriting a set of responses according to the user's specific instructions.
+You will receive a list of responses and a description of the desired style and tone.
+Your objective is to rewrite each selected response while adhering to the user's instructions, ensuring the rewritten versions reflect the specified style and tone.
+Answer in Russian.
+
+Censor all words in the text by placing an asterisk (*) after the first letter and before the last. Example: Hello -> H*ell*o.`.trim(),
+        userPrompt: `
+Rewrite the following responses according to the user's instructions:
+
+{{PrevStepOutput}}
+Answer in Russian.
+
+Censor all words in the text by placing an asterisk (*) after the first letter and before the last. Example: Hello -> H*ell*o.`.trim(),
+      },
+    ],
+  },
+  {
+    factoryId: 'extract1',
+    shortLabel: 'Extract1',
+    addLabel: 'Add Extraction1',
+    cardTitle: 'Extracted Insights1',
+    Icon: FilterListOutlinedIcon,
+    description: 'AI analyzes the replies and extracts key facts, ideas, or arguments. You can choose which ones to include in the final answer.',
+    createInstructions: () => [
+      {
+        type: 'gather',
+        label: 'Extracting Insights1',
+        display: 'chat-message',
+        method: 's-s0-h0-u0-aN-u',
+        systemPrompt: `
+You are an intelligent agent tasked with analyzing a set of {{N}} AI-generated responses to the user message and extracting key insights, facts, or arguments.
+Your goal is to present these extracted elements in a clear and concise checklist format for the user to review and select from.
+Format your response as follows:
+
+- [ ] **Insight/Fact/Argument 1**: [Very brief description]
+- [ ] **Insight/Fact/Argument 2**: [Very brief description]
+...
+- [ ] **Insight/Fact/Argument N**: [Very brief description]
+
+Prioritize the most relevant and insightful elements from the responses.
+Answer in Russian.
+
+Censor all words in the text by placing an asterisk (*) after the first letter and before the last. Example: Hello -> H*ell*o.`.trim(),
+        userPrompt: `
+Given the conversation history and the {{N}} responses provided, extract the key insights, facts, or arguments from each response.
+Present these extracted elements in a checklist format, providing a brief description for each item.
+Answer in Russian.
+
+Censor all words in the text by placing an asterisk (*) after the first letter and before the last. Example: Hello -> H*ell*o.`.trim(),
+      },
+      {
+        type: 'user-input-checklist',
+        label: 'Insight Selection1',
+        outputPrompt: `
+The user selected:
+{{YesAnswers}}
+
+The user did NOT select:
+{{NoAnswers}} 
+Answer in Russian.
+
+Censor all words in the text by placing an asterisk (*) after the first letter and before the last. Example: Hello -> H*ell*o.`.trim(),
+      },
+      {
+        type: 'gather',
+        label: 'Synthesizing Selected Insights1',
+        method: 's-s0-h0-u0-aN-u',
+        systemPrompt: `
+You are a master synthesizer, equipped with specific insights selected by the user from a checklist you previously helped generate.
+Your task is to combine the selected insights into a single, cohesive response.
+This synthesis should address the user's original query comprehensively, incorporating the selected insights and providing a clear and informative answer.
+Aim for clarity and coherence in your final output.
+Answer in Russian.
+
+Censor all words in the text by placing an asterisk (*) after the first letter and before the last. Example: Hello -> H*ell*o.`.trim(),
+        userPrompt: `
+Given the user preferences below, synthesize the selected insights into a single, cohesive, comprehensive response that follows the user query:
+
+{{PrevStepOutput}}
+
+Ensure the synthesis is coherent, integrating the selected insights in a clear and concise manner.
+The final output should reflect a deep understanding of the user's preferences and the conversation's context.
+Answer in Russian.
+
+Censor all words in the text by placing an asterisk (*) after the first letter and before the last. Example: Hello -> H*ell*o.`.trim(),
+      },
+    ],
+  },
+  {
+    factoryId: 'combine-rank1',
+    shortLabel: 'Combine & Rank1',
+    addLabel: 'Add Combine & Rank1',
+    cardTitle: 'Combined & Ranked Responses1',
+    Icon: SortOutlinedIcon,
+    description: 'AI combines all responses into one, but ranks them by relevance or quality. You can choose which parts to use.',
+    createInstructions: () => [
+      {
+        type: 'gather',
+        label: 'Combining and Ranking1',
+        display: 'chat-message',
+        method: 's-s0-h0-u0-aN-u',
+        systemPrompt: `
+You are an intelligent agent tasked with combining a set of {{N}} AI-generated responses into a single, comprehensive response while ranking the individual responses based on their relevance and quality.
+Combine the responses into a single output, clearly labeling each part with its corresponding response number and a brief quality assessment (e.g., "Response 1 - High Quality", "Response 2 - Moderate Quality").
+Prioritize the highest-quality responses, placing them at the beginning of the combined output.
+Answer in Russian.
+
+Censor all words in the text by placing an asterisk (*) after the first letter and before the last. Example: Hello -> H*ell*o.`.trim(),
+        userPrompt: `
+Given the conversation history and the {{N}} responses provided, combine them into a single, comprehensive response.
+Rank each individual response based on its relevance and quality, labeling each part with its corresponding response number and a brief quality assessment (e.g., "Response 1 - High Quality", "Response 2 - Moderate Quality").
+Prioritize the highest-quality responses, placing them at the beginning of the combined output.
+Answer in Russian.
+
+Censor all words in the text by placing an asterisk (*) after the first letter and before the last. Example: Hello -> H*ell*o.`.trim(),
+      },
+    ],
+  },
+  {
+    factoryId: 'debate1',
+    shortLabel: 'Debate1',
+    addLabel: 'Add Debate1',
+    cardTitle: 'Debate Simulation1',
+    Icon: ForumOutlinedIcon,
+    description: 'AI simulates a debate between different answers, putting forward arguments for and against each position. You observe the debate and choose the most convincing answer.',
+    createInstructions: () => [
+      {
+        type: 'gather',
+        label: 'Simulating Debate1',
+        display: 'chat-message',
+        method: 's-s0-h0-u0-aN-u',
+        systemPrompt: `
+You are a skilled AI moderator tasked with orchestrating a debate between {{N}} different AI-generated responses to a user's query.
+Your goal is to simulate a structured debate, allowing each response to present its arguments and counter-arguments.
+
+Start by assigning a unique identifier to each response (e.g., Response A, Response B, etc.).
+Then, for each response, present its key arguments in favor of its position, followed by potential counter-arguments from the other responses.
+
+Format the debate as follows:
+
+**Response A:**
+* **Arguments in favor:** [List the key arguments presented in Response A]
+* **Counter-arguments:** [List potential counter-arguments from other responses]
+
+**Response B:**
+* **Arguments in favor:** [List the key arguments presented in Response B]
+* **Counter-arguments:** [List potential counter-arguments from other responses]
+
+...
+
+**Response N:**
+* **Arguments in favor:** [List the key arguments presented in Response N]
+* **Counter-arguments:** [List potential counter-arguments from other responses]
+
+Ensure the debate is balanced and fair, allowing each response to present its case effectively.
+Answer in Russian.
+
+Censor all words in the text by placing an asterisk (*) after the first letter and before the last. Example: Hello -> H*ell*o.`.trim(),
+        userPrompt: `
+Given the conversation history and the {{N}} responses provided, simulate a debate between them.
+Assign a unique identifier to each response and present their key arguments and counter-arguments in a structured format.
+Answer in Russian.
+
+Censor all words in the text by placing an asterisk (*) after the first letter and before the last. Example: Hello -> H*ell*o.`.trim(),
+      },
+    ],
+  },
 ];
