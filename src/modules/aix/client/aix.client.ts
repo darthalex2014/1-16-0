@@ -33,7 +33,7 @@ export function aixCreateChatGenerateStreamContext(name: AixAPI_Context_ChatGene
 export function aixCreateModelFromLLMOptions(
   llmOptions: Record<string, any> | undefined,
   llmOptionsOverride: Record<string, any> | undefined,
-  debugLlmId: string
+  debugLlmId: string,
 ): AixAPI_Model {
   // model params (llm)
   let { llmRef, llmTemperature, llmResponseTokens } = llmOptions || {};
@@ -250,7 +250,7 @@ export async function aixChatGenerateContent_DMessage<TServiceSettings extends o
 
   // LLM Cost computation & Aggregations
   _llToDMessage(llAccumulator, dMessage);
-  _updateDMessageCosts(dMessage, llm);
+  _updateDMessageCostsInPlace(dMessage, llm);
 
   // final update (could ignore and take the dMessage)
   onStreamingUpdate?.(dMessage, true);
@@ -269,9 +269,9 @@ function _llToDMessage(src: AixChatGenerateContent_LL, dest: AixChatGenerateCont
     dest.generator.tokenStopReason = src.genTokenStopReason;
 }
 
-function _updateDMessageCosts(dest: AixChatGenerateContent_DMessage, llm: DLLM) {
+function _updateDMessageCostsInPlace(dest: AixChatGenerateContent_DMessage, llm: DLLM) {
   // Compute costs
-  const costs = computeChatGenerationCosts(dest.generator.metrics, llm.pricing?.chat);
+  const costs = computeChatGenerationCosts(dest.generator.metrics, llm.pricing?.chat, llm.options?.llmRef || llm.id);
   if (!costs) {
     // FIXME: we shall warn that the costs are missing, as the only way to get pricing is through surfacing missing prices
     return;
@@ -284,7 +284,7 @@ function _updateDMessageCosts(dest: AixChatGenerateContent_DMessage, llm: DLLM) 
   // Run aggregations
   const m = dest.generator.metrics;
   const inputTokens = (m?.TIn || 0) + (m?.TCacheRead || 0) + (m?.TCacheWrite || 0);
-  const outputTokens = (m?.TOut || 0) + (m?.TOutR || 0);
+  const outputTokens = (m?.TOut || 0) /* + (m?.TOutR || 0) THIS IS A BREAKDOWN, IT'S ALREADY IN */;
   metricsStoreAddChatGenerate(costs, inputTokens, outputTokens, llm);
 }
 

@@ -10,7 +10,7 @@ import type { ModelVendorId } from '~/modules/llms/vendors/vendors.registry';
 
 import type { DLLM, DLLMId } from './llms.types';
 import type { DModelsService, DModelsServiceId } from './modelsservice.types';
-import { portModelPricingV2toV3 } from './llms.pricing';
+import { getLlmCostForTokens, portModelPricingV2toV3 } from './llms.pricing';
 
 
 /// ModelsStore - a store for configured LLMs and configured services
@@ -23,7 +23,6 @@ interface LlmsState {
 
   chatLLMId: DLLMId | null;
   fastLLMId: DLLMId | null;
-  funcLLMId: DLLMId | null;
 
 }
 
@@ -40,7 +39,6 @@ interface LlmsActions {
 
   setChatLLMId: (id: DLLMId | null) => void;
   setFastLLMId: (id: DLLMId | null) => void;
-  setFuncLLMId: (id: DLLMId | null) => void;
 
   // special
   setOpenRouterKey: (key: string) => void;
@@ -57,19 +55,15 @@ export const useModelsStore = create<LlmsState & LlmsActions>()(persist(
 
     chatLLMId: null,
     fastLLMId: null,
-    funcLLMId: null,
 
 
     // actions
 
     setChatLLMId: (id: DLLMId | null) =>
-      set(state => _heuristicUpdateSelectedLLMs(state.llms, id, state.fastLLMId, state.funcLLMId)),
+      set(state => _heuristicUpdateSelectedLLMs(state.llms, id, state.fastLLMId)),
 
     setFastLLMId: (id: DLLMId | null) =>
-      set(state => _heuristicUpdateSelectedLLMs(state.llms, state.chatLLMId, id, state.funcLLMId)),
-
-    setFuncLLMId: (id: DLLMId | null) =>
-      set(state => _heuristicUpdateSelectedLLMs(state.llms, state.chatLLMId, state.fastLLMId, id)),
+      set(state => _heuristicUpdateSelectedLLMs(state.llms, state.chatLLMId, id)),
 
     setLLMs: (llms: DLLM[], serviceId: DModelsServiceId, deleteExpiredVendorLlms: boolean, keepUserEdits: boolean) =>
       set(state => {
@@ -95,7 +89,7 @@ export const useModelsStore = create<LlmsState & LlmsActions>()(persist(
         const newLlms = [...llms, ...otherLlms.filter(llm => !llms.find(m => m.id === llm.id))];
         return {
           llms: newLlms,
-          ..._heuristicUpdateSelectedLLMs(newLlms, state.chatLLMId, state.fastLLMId, state.funcLLMId),
+          ..._heuristicUpdateSelectedLLMs(newLlms, state.chatLLMId, state.fastLLMId),
         };
       }),
 
@@ -104,7 +98,7 @@ export const useModelsStore = create<LlmsState & LlmsActions>()(persist(
         const newLlms = state.llms.filter(llm => llm.id !== id);
         return {
           llms: newLlms,
-          ..._heuristicUpdateSelectedLLMs(newLlms, state.chatLLMId, state.fastLLMId, state.funcLLMId),
+          ..._heuristicUpdateSelectedLLMs(newLlms, state.chatLLMId, state.fastLLMId),
         };
       }),
 
@@ -150,7 +144,7 @@ export const useModelsStore = create<LlmsState & LlmsActions>()(persist(
         return {
           llms,
           sources: state.sources.filter(s => s.id !== id),
-          ..._heuristicUpdateSelectedLLMs(llms, state.chatLLMId, state.fastLLMId, state.funcLLMId),
+          ..._heuristicUpdateSelectedLLMs(llms, state.chatLLMId, state.fastLLMId),
         };
       }),
 
@@ -200,12 +194,11 @@ export const useModelsStore = create<LlmsState & LlmsActions>()(persist(
       if (fromVersion < 2) {
         for (const llm of state.llms) {
           delete (llm as any)['tags'];
-          llm.interfaces = ['oai-chat'];
+          llm.interfaces = ['oai-chat' /* this is here like this to reduce dependencies */];
           // llm.inputTypes = { 'text': {} };
         }
         state.chatLLMId = null;
         state.fastLLMId = null;
-        state.funcLLMId = null;
       }
 
       // 2 -> 3: big-AGI v2: update all models for pricing info
@@ -240,8 +233,8 @@ export const useModelsStore = create<LlmsState & LlmsActions>()(persist(
 
       // Select the best LLMs automatically, if not set
       try {
-        if (!state.chatLLMId || !state.fastLLMId || !state.funcLLMId)
-          Object.assign(state, _heuristicUpdateSelectedLLMs(state.llms, state.chatLLMId, state.fastLLMId, state.funcLLMId));
+        if (!state.chatLLMId || !state.fastLLMId)
+          Object.assign(state, _heuristicUpdateSelectedLLMs(state.llms, state.chatLLMId, state.fastLLMId));
       } catch (error) {
         console.error('Error in autoPickModels', error);
       }
@@ -266,12 +259,28 @@ export function getChatLLMId(): DLLMId | null {
   return llmsStoreState().chatLLMId;
 }
 
-export function getFastLLMId(): DLLMId | null {
-  return llmsStoreState().fastLLMId;
-}
+const messageMissingFast = 'Please select a valid "fast" model in the Model Configuration.';
 
-export function getFuncLLMId(): DLLMId | null {
-  return llmsStoreState().funcLLMId;
+/**
+ * Must support function calling, hence we verify here.
+ */
+export function getFastLLMIdOrThrow(useCaseLabel: string): DLLMId {
+  const fastLLMId = llmsStoreState().fastLLMId;
+
+  if (!fastLLMId)
+    throw new Error(`No model available for '${useCaseLabel}'. ${messageMissingFast}`);
+
+  let fastLLM;
+  try {
+    fastLLM = findLLMOrThrow(fastLLMId);
+  } catch (error) {
+    throw new Error(`Model ${fastLLMId} not found. ${messageMissingFast}`);
+  }
+
+  if (!fastLLM.interfaces.includes('oai-chat-fn'  /* this is here like this to reduce dependencies */))
+    throw new Error(`Model ${fastLLMId} is not a function model. ${messageMissingFast}`);
+
+  return fastLLMId;
 }
 
 export function llmsStoreState(): LlmsState & LlmsActions {
@@ -325,63 +334,54 @@ export function getDiverseTopLlmIds(count: number, requireElo: boolean, fallback
 }
 
 export function getLLMsDebugInfo() {
-  const { llms, sources, chatLLMId, fastLLMId, funcLLMId } = llmsStoreState();
-  return { services: sources.length, llmsCount: llms.length, chatId: chatLLMId, fastId: fastLLMId, funcId: funcLLMId };
+  const { llms, sources, chatLLMId, fastLLMId } = llmsStoreState();
+  return { services: sources.length, llmsCount: llms.length, chatId: chatLLMId, fastId: fastLLMId };
 }
 
-function _heuristicUpdateSelectedLLMs(allLlms: DLLM[], chatLlmId: DLLMId | null, fastLlmId: DLLMId | null, funcLlmId: DLLMId | null) {
+function _heuristicUpdateSelectedLLMs(allLlms: DLLM[], chatLlmId: DLLMId | null, fastLlmId: DLLMId | null) {
 
-  // the output of _groupLlmsByVendorRankedByElo
-  let grouped: ReturnType<typeof _groupLlmsByVendorRankedByElo> | null = null;
+  let grouped: GroupedVendorLLMs;
 
   function cachedGrouped() {
     if (!grouped) grouped = _groupLlmsByVendorRankedByElo(allLlms);
     return grouped;
   }
 
-  // the best llm
+  // default Chat: top vendor by Elo, top model
   if (!chatLlmId || !allLlms.find(llm => llm.id === chatLlmId)) {
     const vendors = cachedGrouped();
     chatLlmId = vendors.length ? vendors[0].llmsByElo[0].id : null;
   }
 
-  // a fast llm (bottom elo of the top vendor ~~ not really a proxy, but not sure which heuristic to use here)
-  if (!fastLlmId && !allLlms.find(llm => llm.id === fastLlmId)) {
+  // default Fast: vendors by Elo, lowest cost (if available)
+  if (!fastLlmId || !allLlms.find(llm => llm.id === fastLlmId)) {
     const vendors = cachedGrouped();
-    fastLlmId = vendors.length
-      ? vendors[0].llmsByElo.findLast(llm => llm.cbaElo)?.id // last with ELO
-      ?? vendors[0].llmsByElo[vendors[0].llmsByElo.length - 1].id ?? null // last
-      : null;
+    fastLlmId = _selectFastLlmID(vendors);
   }
 
-  // a func llm (same as chat for now, hoping the highest grade also has function calling)
-  if (!funcLlmId || !allLlms.find(llm => llm.id === funcLlmId))
-    funcLlmId = chatLlmId;
-
-  return { chatLLMId: chatLlmId, fastLLMId: fastLlmId, funcLLMId: funcLlmId };
+  return { chatLLMId: chatLlmId, fastLLMId: fastLlmId };
 }
 
-function _groupLlmsByVendorRankedByElo(llms: DLLM[]): { vendorId: ModelVendorId, llmsByElo: { id: DLLMId, cbaElo: number | undefined }[] }[] {
+
+type BenchVendorLLMs = { vendorId: ModelVendorId, llmsByElo: { id: DLLMId, cbaElo: number | undefined, costRank: number | undefined }[] };
+type GroupedVendorLLMs = BenchVendorLLMs[];
+
+function _groupLlmsByVendorRankedByElo(llms: DLLM[]): GroupedVendorLLMs {
   // group all LLMs by vendor
   const grouped = llms.reduce((acc, llm) => {
     if (llm.hidden) return acc;
-    const vendor = acc.find(v => v.vendorId === llm.vId);
-    if (!vendor) {
-      acc.push({
-        vendorId: llm.vId,
-        llmsByElo: [{
-          id: llm.id,
-          cbaElo: llm.benchmark?.cbaElo,
-        }],
-      });
-    } else {
-      vendor.llmsByElo.push({
-        id: llm.id,
-        cbaElo: llm.benchmark?.cbaElo,
-      });
-    }
+    const group = acc.find(v => v.vendorId === llm.vId);
+    const eloCostItem = {
+      id: llm.id,
+      cbaElo: llm.benchmark?.cbaElo,
+      costRank: !llm.pricing ? undefined : _getLlmCostBenchmark(llm),
+    };
+    if (!group)
+      acc.push({ vendorId: llm.vId, llmsByElo: [eloCostItem] });
+    else
+      group.llmsByElo.push(eloCostItem);
     return acc;
-  }, [] as { vendorId: ModelVendorId, llmsByElo: { id: DLLMId, cbaElo: number | undefined }[] }[]);
+  }, [] as GroupedVendorLLMs);
 
   // sort each vendor's LLMs by elo, decreasing
   for (const vendor of grouped)
@@ -390,4 +390,29 @@ function _groupLlmsByVendorRankedByElo(llms: DLLM[]): { vendorId: ModelVendorId,
   // sort all vendors by their highest elo, decreasing
   grouped.sort((a, b) => (b.llmsByElo[0].cbaElo ?? -1) - (a.llmsByElo[0].cbaElo ?? -1));
   return grouped;
+}
+
+// Hypothetical cost benchmark for a model, based on total cost of 100k input tokens and 10k output tokens.
+function _getLlmCostBenchmark(llm: DLLM): number | undefined {
+  if (!llm.pricing?.chat) return undefined;
+  const costIn = getLlmCostForTokens(100000, 100000, llm.pricing.chat.input);
+  const costOut = getLlmCostForTokens(100000, 10000, llm.pricing.chat.output);
+  return (costIn !== undefined && costOut !== undefined) ? costIn + costOut : undefined;
+}
+
+// Selects the 'fast' llm
+function _selectFastLlmID(vendors: GroupedVendorLLMs) {
+  if (!vendors.length) return null;
+  for (const vendor of vendors) {
+    const lowestCostLlm = vendor.llmsByElo.reduce((acc, llm) => {
+      if (!acc)
+        return llm;
+      if (!llm.costRank || !acc.costRank)
+        return acc;
+      return llm.costRank < acc.costRank ? llm : acc;
+    }, null as BenchVendorLLMs['llmsByElo'][number] | null);
+    if (lowestCostLlm)
+      return lowestCostLlm.id;
+  }
+  return null;
 }
