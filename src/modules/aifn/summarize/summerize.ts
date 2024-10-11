@@ -1,4 +1,4 @@
-import { aixChatGenerateTextNS_Simple } from '~/modules/aix/client/aix.client';
+import { aixChatGenerateText_Simple } from '~/modules/aix/client/aix.client';
 
 import type { DLLMId } from '~/common/stores/llms/llms.types';
 import { findLLMOrThrow } from '~/common/stores/llms/store-llms';
@@ -81,16 +81,12 @@ async function cleanUpContent(chunk: string, llmId: DLLMId, _ignored_was_targetW
   const { contextTokens } = findLLMOrThrow(llmId);
   const autoResponseTokensSize = contextTokens ? Math.floor(contextTokens * outputTokenShare) : null;
 
-  try {
-    return (await aixChatGenerateTextNS_Simple(
-      llmId,
-      cleanupPrompt,
-      chunk,
-      'chat-ai-summarize', 'DEV',
-    )).trim();
-  } catch (error: any) {
-    return '';
-  }
+  return await aixChatGenerateText_Simple(
+    llmId,
+    cleanupPrompt,
+    chunk,
+    'chat-ai-summarize', 'DEV',
+  ).catch(() => '').then((response: string) => response.trim());
 }
 
 async function recursiveSummerize(text: string, llmId: DLLMId, targetWordCount: number, depth: number = 0): Promise<string> {
