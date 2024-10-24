@@ -27,7 +27,7 @@ export async function elevenLabsHandler(req: NextRequest) {
     const { headers, url } = elevenlabsAccess(elevenKey, path);
     const body: ElevenlabsWire.TTSRequest = {
       text: text,
-      ...(nonEnglish && { model_id: 'eleven_multilingual_v1' }),
+      ...(nonEnglish && { model_id: 'eleven_turbo_v2_5' }),
     };
 
     // elevenlabs POST
