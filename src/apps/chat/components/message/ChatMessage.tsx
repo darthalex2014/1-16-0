@@ -3,7 +3,7 @@ import { useShallow } from 'zustand/react/shallow';
 import TimeAgo from 'react-timeago';
 
 import type { SxProps } from '@mui/joy/styles/types';
-import { Box, ButtonGroup, CircularProgress, Divider, IconButton, ListDivider, ListItem, ListItemDecorator, MenuItem, Switch, Tooltip, Typography } from '@mui/joy';
+import { Box, ButtonGroup, CircularProgress, Divider, IconButton, ListDivider, ListItem, ListItemDecorator, MenuItem, Switch, Tooltip, Typography, Modal, ModalClose, Textarea, FormControl, FormLabel, Input, Button } from '@mui/joy';
 import { ClickAwayListener, Popper } from '@mui/base';
 import AccountTreeOutlinedIcon from '@mui/icons-material/AccountTreeOutlined';
 import AlternateEmailIcon from '@mui/icons-material/AlternateEmail';
@@ -24,9 +24,11 @@ import RecordVoiceOverOutlinedIcon from '@mui/icons-material/RecordVoiceOverOutl
 import ReplayIcon from '@mui/icons-material/Replay';
 import ReplyAllRoundedIcon from '@mui/icons-material/ReplyAllRounded';
 import ReplyRoundedIcon from '@mui/icons-material/ReplyRounded';
+import SettingsIcon from '@mui/icons-material/Settings';
 import StrikethroughSIcon from '@mui/icons-material/StrikethroughS';
 import TelegramIcon from '@mui/icons-material/Telegram';
 import TextureIcon from '@mui/icons-material/Texture';
+import TranslateIcon from '@mui/icons-material/Translate';
 import VerticalAlignBottomIcon from '@mui/icons-material/VerticalAlignBottom';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
@@ -49,6 +51,8 @@ import { createTextContentFragment, DMessageFragment, DMessageFragmentId, update
 import { useFragmentBuckets } from '~/common/stores/chat/hooks/useFragmentBuckets';
 import { useUIPreferencesStore } from '~/common/stores/store-ui';
 import { useUXLabsStore } from '~/common/stores/store-ux-labs';
+import { useModelDomain } from '~/common/stores/llms/hooks/useModelDomain';
+import { aixChatGenerateText_Simple } from '~/modules/aix/client/aix.client';
 
 import { BlockOpContinue } from './BlockOpContinue';
 import { BlockOpOptions, optionsExtractFromFragments_dangerModifyFragment } from './BlockOpOptions';
@@ -174,6 +178,20 @@ export function ChatMessage(props: {
   const [contextMenuAnchor, setContextMenuAnchor] = React.useState<HTMLElement | null>(null);
   const [opsMenuAnchor, setOpsMenuAnchor] = React.useState<HTMLElement | null>(null);
   const [textContentEditState, setTextContentEditState] = React.useState<ChatMessageTextPartEditState | null>(null);
+  const [translationSettingsOpen, setTranslationSettingsOpen] = React.useState(false);
+  const [translationInProgress, setTranslationInProgress] = React.useState(false);
+  const [customActionInProgress, setCustomActionInProgress] = React.useState(false);
+  const [originalMessage, setOriginalMessage] = React.useState<string | null>(null);
+  
+  // Translation settings with defaults
+  const [settings, setSettings] = React.useState({
+    sourceLang: localStorage.getItem('sourceLang') || 'English',
+    targetLang: localStorage.getItem('targetLang') || 'Russian',
+    translationPrompt: localStorage.getItem('translationPrompt') || 
+      'Translate the following text from {sourceLang} to {targetLang}. Output ONLY the translation, nothing else:\n\n{text}',
+    customActionPrompt: localStorage.getItem('customActionPrompt') || 
+      'Summarize the following text in 3 bullet points:\n\n{text}'
+  });
 
   // external state
   const { adjContentScaling, disableMarkdown, doubleClickToEdit, uiComplexityMode } = useUIPreferencesStore(useShallow(state => ({
@@ -185,6 +203,8 @@ export function ChatMessage(props: {
   const labsEnhanceCodeBlocks = useUXLabsStore(state => state.labsEnhanceCodeBlocks);
   const [showDiff, setShowDiff] = useChatShowTextDiff();
 
+  // Get fast utility model for translation
+  const { domainModelId: fastUtilModelId } = useModelDomain('fastUtil');
 
   // derived state
   const {
@@ -226,10 +246,10 @@ export function ChatMessage(props: {
   const couldImagine = textSubject.length >= 3 && !isSpecialT2I;
   const couldSpeak = couldImagine;
 
-
-  // TODO: fix the diffing
-  // const wordsDiff = useWordsDifference(textSubject, props.diffPreviousText, showDiff);
-
+  // Get first available content fragment for translation
+  const firstContentFragment = React.useMemo(() => {
+    return contentFragments.length > 0 ? contentFragments[0] : (voidFragments.length > 0 ? voidFragments[0] : null);
+  }, [contentFragments, voidFragments]);
 
   const { onMessageAssistantFrom, onMessageDelete, onMessageFragmentAppend, onMessageFragmentDelete, onMessageFragmentReplace, onMessageContinue } = props;
 
@@ -613,6 +633,116 @@ export function ChatMessage(props: {
   const { label: messageAvatarLabel, tooltip: messageAvatarTooltip } = useMessageAvatarLabel(props.message, uiComplexityMode);
 
 
+  // Translation handlers
+  const handleTranslateText = React.useCallback(async () => {
+    if (!fastUtilModelId) {
+      alert('No Fast Utility model configured. Please configure one in Settings > AI > Fast.');
+      return;
+    }
+    
+    if (!firstContentFragment) return;
+    
+    setTranslationInProgress(true);
+    const textToTranslate = messageFragmentsReduceText(messageFragments);
+    
+    try {
+      // Prepare the system prompt with the placeholders replaced
+      const formattedPrompt = settings.translationPrompt
+        .replace('{sourceLang}', settings.sourceLang)
+        .replace('{targetLang}', settings.targetLang)
+        .replace('{text}', textToTranslate);
+      
+      // Use the existing aixChatGenerateText_Simple API with the fastUtil model
+      const translatedText = await aixChatGenerateText_Simple(
+        fastUtilModelId,
+        formattedPrompt,
+        '', // empty user message since we included the text in the system prompt
+        'call', // context name
+        messageId, // context reference
+      );
+      
+      if (translatedText) {
+        setOriginalMessage(textToTranslate);
+        const newFragment = createTextContentFragment(translatedText);
+        onMessageFragmentReplace?.(messageId, firstContentFragment.fId, newFragment);
+      }
+    } catch (error) {
+      console.error('Translation error:', error);
+      alert(`Translation failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setTranslationInProgress(false);
+      handleCloseOpsMenu();
+    }
+  }, [fastUtilModelId, firstContentFragment, handleCloseOpsMenu, messageFragments, messageId, onMessageFragmentReplace, settings]);
+
+  const handleCustomAction = React.useCallback(async () => {
+    if (!fastUtilModelId) {
+      alert('No Fast Utility model configured. Please configure one in Settings > AI > Fast.');
+      return;
+    }
+    
+    if (!firstContentFragment) return;
+    
+    setCustomActionInProgress(true);
+    const textToProcess = messageFragmentsReduceText(messageFragments);
+    
+    try {
+      // Prepare the system prompt with the placeholders replaced
+      const formattedPrompt = settings.customActionPrompt
+        .replace('{text}', textToProcess);
+      
+      // Use the existing aixChatGenerateText_Simple API with the fastUtil model
+      const processedText = await aixChatGenerateText_Simple(
+        fastUtilModelId,
+        formattedPrompt,
+        '', // empty user message since we included the text in the system prompt
+        'call', // context name
+        messageId, // context reference
+      );
+      
+      if (processedText) {
+        setOriginalMessage(textToProcess);
+        const newFragment = createTextContentFragment(processedText);
+        onMessageFragmentReplace?.(messageId, firstContentFragment.fId, newFragment);
+      }
+    } catch (error) {
+      console.error('Custom action error:', error);
+      alert(`Custom action failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setCustomActionInProgress(false);
+      handleCloseOpsMenu();
+    }
+  }, [fastUtilModelId, firstContentFragment, handleCloseOpsMenu, messageFragments, messageId, onMessageFragmentReplace, settings]);
+  
+  const handleRevertOriginal = React.useCallback(() => {
+    if (originalMessage && firstContentFragment) {
+      const newFragment = createTextContentFragment(originalMessage);
+      onMessageFragmentReplace?.(messageId, firstContentFragment.fId, newFragment);
+      setOriginalMessage(null);
+    }
+    handleCloseOpsMenu();
+  }, [firstContentFragment, handleCloseOpsMenu, messageId, onMessageFragmentReplace, originalMessage]);
+
+  const handleOpenTranslationSettings = React.useCallback(() => {
+    setTranslationSettingsOpen(true);
+    handleCloseOpsMenu();
+  }, [handleCloseOpsMenu]);
+
+  const handleCloseTranslationSettings = React.useCallback(() => {
+    setTranslationSettingsOpen(false);
+  }, []);
+
+  const handleSettingsChange = React.useCallback((event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = event.target;
+    setSettings(prevSettings => {
+      const newSettings = { ...prevSettings, [name]: value };
+      localStorage.setItem(name, value);
+      return newSettings;
+    });
+  }, []);
+
+  const hasTranslated = !!originalMessage;
+
   return (
     <Box
       component='li'
@@ -988,6 +1118,27 @@ export function ChatMessage(props: {
                   : <Box sx={{ flexGrow: 1, display: 'flex', justifyContent: 'space-between', gap: 1 }}>Beam Edit<KeyStroke variant='outlined' combo='Ctrl + Shift + B' /></Box>}
             </MenuItem>
           )}
+          
+          {/* Translation tools */}
+          <ListDivider />
+          {hasTranslated && (
+            <MenuItem onClick={handleRevertOriginal}>
+              <ListItemDecorator><ReplayIcon /></ListItemDecorator>
+              Restore original
+            </MenuItem>
+          )}
+          <MenuItem onClick={handleTranslateText} disabled={translationInProgress || customActionInProgress || !firstContentFragment}>
+            <ListItemDecorator>{translationInProgress ? <CircularProgress size='sm' /> : <TranslateIcon />}</ListItemDecorator>
+            Translate
+          </MenuItem>
+          <MenuItem onClick={handleCustomAction} disabled={translationInProgress || customActionInProgress || !firstContentFragment}>
+            <ListItemDecorator>{customActionInProgress ? <CircularProgress size='sm' /> : <FormatPaintOutlinedIcon />}</ListItemDecorator>
+            Custom Action
+          </MenuItem>
+          <MenuItem onClick={handleOpenTranslationSettings}>
+            <ListItemDecorator><SettingsIcon /></ListItemDecorator>
+            AI Tools settings
+          </MenuItem>
         </CloseablePopup>
       )}
 
@@ -1116,6 +1267,85 @@ export function ChatMessage(props: {
           </MenuItem>}
         </CloseablePopup>
       )}
+
+      {/* Translation Settings Modal */}
+      <Modal 
+        open={translationSettingsOpen} 
+        onClose={handleCloseTranslationSettings}
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <Box sx={{
+          width: '90%',
+          maxWidth: 500,
+          bgcolor: 'background.surface',
+          p: 3,
+          borderRadius: 'md',
+          boxShadow: 'lg',
+        }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography level='h4'>AI Tools Settings</Typography>
+            <ModalClose />
+          </Box>
+
+          <FormControl sx={{ mb: 2, width: '100%' }}>
+            <FormLabel>Source language</FormLabel>
+            <Input
+              name="sourceLang"
+              value={settings.sourceLang}
+              onChange={handleSettingsChange}
+              placeholder="e.g. English"
+            />
+          </FormControl>
+
+          <FormControl sx={{ mb: 2, width: '100%' }}>
+            <FormLabel>Target language</FormLabel>
+            <Input
+              name="targetLang"
+              value={settings.targetLang}
+              onChange={handleSettingsChange}
+              placeholder="e.g. Russian"
+            />
+          </FormControl>
+
+          <FormControl sx={{ mb: 2, width: '100%' }}>
+            <FormLabel>Translation prompt</FormLabel>
+            <Textarea
+              name="translationPrompt"
+              value={settings.translationPrompt}
+              onChange={handleSettingsChange}
+              minRows={3}
+              maxRows={5}
+            />
+            <Typography level="body-xs" sx={{ mt: 0.5, color: 'neutral.500' }}>
+              Use {'{sourceLang}'}, {'{targetLang}'} and {'{text}'} as placeholders
+            </Typography>
+          </FormControl>
+
+          <Divider sx={{ my: 2 }} />
+
+          <FormControl sx={{ mb: 2, width: '100%' }}>
+            <FormLabel>Custom action prompt</FormLabel>
+            <Textarea
+              name="customActionPrompt"
+              value={settings.customActionPrompt}
+              onChange={handleSettingsChange}
+              minRows={3}
+              maxRows={5}
+            />
+            <Typography level="body-xs" sx={{ mt: 0.5, color: 'neutral.500' }}>
+              Use {'{text}'} as placeholder for the original message text
+            </Typography>
+          </FormControl>
+
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
+            <Button onClick={handleCloseTranslationSettings}>Close</Button>
+          </Box>
+        </Box>
+      </Modal>
 
     </Box>
   );
